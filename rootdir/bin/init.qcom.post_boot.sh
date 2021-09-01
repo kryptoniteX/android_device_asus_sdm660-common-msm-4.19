@@ -856,22 +856,24 @@ function configure_read_ahead_kb_values() {
     MemTotalStr=`cat /proc/meminfo | grep MemTotal`
     MemTotal=${MemTotalStr:16:8}
 
-    dmpts=$(ls /sys/block/*/queue/read_ahead_kb | grep -e dm -e mmc)
-
     # Set 128 for <= 3GB &
     # set 512 for >= 4GB targets.
     if [ $MemTotal -le 3145728 ]; then
         echo 128 > /sys/block/mmcblk0/bdi/read_ahead_kb
+        echo 128 > /sys/block/mmcblk0/queue/read_ahead_kb
         echo 128 > /sys/block/mmcblk0rpmb/bdi/read_ahead_kb
-        for dm in $dmpts; do
-            echo 128 > $dm
-        done
+        echo 128 > /sys/block/mmcblk0rpmb/queue/read_ahead_kb
+        echo 128 > /sys/block/dm-0/queue/read_ahead_kb
+        echo 128 > /sys/block/dm-1/queue/read_ahead_kb
+        echo 128 > /sys/block/dm-2/queue/read_ahead_kb
     else
         echo 512 > /sys/block/mmcblk0/bdi/read_ahead_kb
+        echo 512 > /sys/block/mmcblk0/queue/read_ahead_kb
         echo 512 > /sys/block/mmcblk0rpmb/bdi/read_ahead_kb
-        for dm in $dmpts; do
-            echo 512 > $dm
-        done
+        echo 512 > /sys/block/mmcblk0rpmb/queue/read_ahead_kb
+        echo 512 > /sys/block/dm-0/queue/read_ahead_kb
+        echo 512 > /sys/block/dm-1/queue/read_ahead_kb
+        echo 512 > /sys/block/dm-2/queue/read_ahead_kb
     fi
 }
 
@@ -989,7 +991,7 @@ else
 
         # Enable adaptive LMK for all targets &
         # use Google default LMK series for all 64-bit targets >=2GB.
-        echo 1 > /sys/module/lowmemorykiller/parameters/enable_adaptive_lmk
+        echo 0 > /sys/module/lowmemorykiller/parameters/enable_adaptive_lmk
 
         # Enable oom_reaper
         if [ -f /sys/module/lowmemorykiller/parameters/oom_reaper ]; then
@@ -1015,7 +1017,7 @@ else
               *)
                 #Set PPR parameters for all other targets.
                 echo $set_almk_ppr_adj > /sys/module/process_reclaim/parameters/min_score_adj
-                echo 1 > /sys/module/process_reclaim/parameters/enable_process_reclaim
+                echo 0 > /sys/module/process_reclaim/parameters/enable_process_reclaim
                 echo 50 > /sys/module/process_reclaim/parameters/pressure_min
                 echo 70 > /sys/module/process_reclaim/parameters/pressure_max
                 echo 30 > /sys/module/process_reclaim/parameters/swap_opt_eff
@@ -3087,12 +3089,6 @@ case "$target" in
             # Set Memory parameters
             configure_memory_parameters
 
-            # enable LPM
-            echo 0 > /sys/module/lpm_levels/parameters/sleep_disabled
-
-            # Start cdsprpcd only for sdm660 and disable for sdm630
-            start vendor.cdsprpcd
-
             # Start Host based Touch processing
                 case "$hw_platform" in
                         "MTP" | "Surf" | "RCM" | "QRD" )
@@ -3101,6 +3097,13 @@ case "$target" in
                 esac
             ;;
         esac
+
+        # Start cdsprpcd only for sdm660 and disable for sdm630 and sdm636
+        case "$soc_id" in
+            "317" | "324" | "325" | "326" )
+            start vendor.cdsprpcd
+        esac
+
         #Apply settings for sdm630 and Tahaa
         case "$soc_id" in
             "318" | "327" | "385" )
@@ -3210,8 +3213,6 @@ case "$target" in
             echo N > /sys/module/lpm_levels/system/pwr/cpu7/ret/idle_enabled
             echo N > /sys/module/lpm_levels/system/pwr/pwr-l2-dynret/idle_enabled
             echo N > /sys/module/lpm_levels/system/perf/perf-l2-dynret/idle_enabled
-            # enable LPM
-            echo 0 > /sys/module/lpm_levels/parameters/sleep_disabled
 
             # re-enable thermal and BCL hotplug
             echo 1 > /sys/module/msm_thermal/core_control/enabled
@@ -3231,6 +3232,9 @@ case "$target" in
             do
                 echo -n enable > $mode
             done
+
+            # Turn off scheduler boost at the end
+            echo 0 > /proc/sys/kernel/sched_boost
 
             # Set Memory parameters
             configure_memory_parameters
